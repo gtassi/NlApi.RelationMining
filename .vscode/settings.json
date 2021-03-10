@@ -3,5 +3,13 @@
     "**/bin": true,
     "**/obj": true
   },
-  "omnisharp.projectLoadTimeout": 300
+  "omnisharp.projectLoadTimeout": 300,
+  "spellright.language": [
+    "en"
+  ],
+  "spellright.documentTypes": [
+    "markdown",
+    "latex",
+    "plaintext"
+  ]
 }

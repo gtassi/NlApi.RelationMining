@@ -32,8 +32,8 @@ namespace NlApi.RelationMining {
       var json = await ParseJson(output);
 
       foreach (var relation in json["data"]["relations"]) {
-        var id = await InsertOrRetrieve(relation["verb"], false);
-        await WriteRelated(relation, id);
+        var startId = await InsertOrRetrieve(relation["verb"], false);
+        await WriteRelated(relation, startId);
       }
     }
 
@@ -49,26 +49,14 @@ namespace NlApi.RelationMining {
         var endId = await InsertOrRetrieve(related, true);
         var relation = related["relation"].Value<string>();
 
-        var existingRelation = await ParseJson(await HttpClient.Post(ApiUrl, new {
+        await HttpClient.Post(ApiUrl, new {
           statements = new[] {
             new {
-              statement = "MATCH (start)-[r: " + relation + "]->(end) WHERE ID(start) = $startId AND ID(end) = $endId RETURN ID(r)",
+              statement = "MATCH (start) MATCH (end) WHERE ID(start) = $startId AND ID(end) = $endId MERGE (start)-[r: " + relation + "]->(end) RETURN ID(r)",
               parameters = new { startId, endId }
             }
           }
-        }));
-
-        var existingRelationId = existingRelation.SelectToken("$.results[0].data[0].row[0]")?.Value<int>() ?? NullId;
-        if (existingRelationId == NullId) {
-          await HttpClient.Post(ApiUrl, new {
-            statements = new[] {
-              new {
-                statement = "MATCH (start) WHERE ID(start) = $startId MATCH (end) WHERE ID(end) = $endId CREATE (start)-[r: " + relation + "]->(end) RETURN ID(r)",
-                parameters = new { startId, endId }
-              }
-            }
-          });
-        }
+        });
 
         await WriteRelated(related, endId);
       }
@@ -77,39 +65,21 @@ namespace NlApi.RelationMining {
     async Task<int> InsertOrRetrieve(JToken token, bool reuse) {
       var lemma = token["lemma"].Value<string>();
       var type = token["type"].Value<string>();
-      var id = NullId;
 
-      if (reuse && TypesToRetrieve.IsMatch(type)) {
-        var result = await ParseJson(await HttpClient.Post(ApiUrl, new {
-          statements = new[] {
-            new {
-              statement = "MATCH (x: " + type + " { lemma: $lemma }) RETURN ID(x)",
-              parameters = new { lemma }
-            }
+      var result = await ParseJson(await HttpClient.Post(ApiUrl, new {
+        statements = new[] {
+          new {
+            statement = (reuse && TypesToRetrieve.IsMatch(type) ? "MERGE" : "CREATE") + " (x: " + (type == "" ? "UNK" : type) + " { lemma: $lemma }) RETURN ID(x)",
+            parameters = new { lemma }
           }
-        }));
+        }
+      }));
 
-        id = result.SelectToken("$.results[0].data[0].row[0]")?.Value<int>() ?? NullId;
-      }
-
-      if (id == NullId) {
-        var result = await ParseJson(await HttpClient.Post(ApiUrl, new {
-          statements = new[] {
-            new {
-              statement = "CREATE (x: " + (type == "" ? "UNK" : type) + " {lemma: $lemma}) RETURN ID(x)",
-              parameters = new { lemma }
-            }
-          }
-        }));
-
-        id = result.SelectToken("$.results[0].data[0].row[0]")?.Value<int>() ?? NullId;
-      }
-
-      return id;
+      return result.SelectToken("$.results[0].data[0].row[0]").Value<int>();
     }
 
     public static string Base64Encode(string textToEncode) {
-      byte[] textAsBytes = Encoding.UTF8.GetBytes(textToEncode);
+      var textAsBytes = Encoding.UTF8.GetBytes(textToEncode);
       return Convert.ToBase64String(textAsBytes);
     }
   }

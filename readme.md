@@ -32,9 +32,10 @@ To build and execute the project, you need to do the following:
   }
 }
 ```
+
 - using the command line in the project root folder, execute the following commands:
 
-```
+```shell
 dotnet build
 dotnet run
 ```
